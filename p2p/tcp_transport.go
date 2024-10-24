@@ -26,6 +26,8 @@ func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 type TCPTransport struct {
 	listenAddress string
 	listener      net.Listener
+	shakeHands    HandshakeFunc
+	decoder       Decoder
 
 	mu    sync.RWMutex
 	peers map[net.Addr]Peer
@@ -35,6 +37,7 @@ func NewTCPTransport(listenAddr string) *TCPTransport {
 
 	return &TCPTransport{
 		listenAddress: listenAddr,
+		shakeHands:    NOPHandshakeFunc,
 	}
 
 }
@@ -55,11 +58,29 @@ func (t *TCPTransport) ListenAndAccept() error {
 
 }
 
+type Temp struct{}
+
 func (t *TCPTransport) handleConn(conn net.Conn) {
 
 	peer := NewTCPPeer(conn, true)
 
+	if err := t.shakeHands(peer); err != nil {
+
+		fmt.Println("error occured during handeshake", peer, err)
+
+		conn.Close()
+
+		return
+
+	}
+
 	fmt.Println("New incoming connection", conn, peer)
+
+	msg := &Temp{}
+	for {
+		if err := t.decoder.Decode(conn, msg); err != nil {
+		}
+	}
 
 }
 
