@@ -10,7 +10,13 @@ import (
 func main() {
 	fmt.Println("Hello!")
 
-	tr := p2p.NewTCPTransport(":8080")
+	tcpOpts := p2p.TCPTransportOpts{
+		ListenAddr: ":8080",
+		ShakeHands: p2p.NOPHandshakeFunc,
+		Decoder:    p2p.GOBDecoder{},
+	}
+
+	tr := p2p.NewTCPTransport(tcpOpts)
 
 	err := tr.ListenAndAccept()
 	if err != nil {
