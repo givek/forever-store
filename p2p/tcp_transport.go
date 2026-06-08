@@ -79,21 +79,24 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 	fmt.Println("Accepting new connection!", conn, peer)
 
-	// msg := &Message{}
+	msg := &Message{}
 
-	buf := make([]byte, 2000)
+	// buf := make([]byte, 2000)
 
 	// Read loop
 	for {
-		n, err := conn.Read(buf)
+		// n, err := conn.Read(buf)
 
-		// err := t.Decoder.Decode(conn, msg)
+		err := t.Decoder.Decode(conn, msg)
 		if err != nil {
 			fmt.Println("handleConn unexpected error - read loop ", err)
 			continue
 		}
 
-		fmt.Printf("Hello Message: %v\n", buf[:n])
+		msg.From = conn.LocalAddr()
+
+		// fmt.Printf("Hello Message: %v\n", buf[:n])
+		fmt.Printf("Hello Message: %v\n", msg)
 	}
 
 }

@@ -13,7 +13,7 @@ func main() {
 	tcpOpts := p2p.TCPTransportOpts{
 		ListenAddr: ":8080",
 		ShakeHands: p2p.NOPHandshakeFunc,
-		Decoder:    p2p.GOBDecoder{},
+		Decoder:    p2p.DefaultDecoder{},
 	}
 
 	tr := p2p.NewTCPTransport(tcpOpts)
