@@ -3,7 +3,6 @@ package p2p
 import (
 	"fmt"
 	"net"
-	"sync"
 )
 
 type TCPPeer struct {
@@ -12,6 +11,10 @@ type TCPPeer struct {
 	// if we dial and retrieve a conn => outbound == true
 	// if we accept and retrieve a conn => outbound == false
 	outbound bool
+}
+
+func (p *TCPPeer) Close() error {
+	return p.conn.Close()
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
@@ -25,20 +28,28 @@ type TCPTransportOpts struct {
 	ListenAddr string
 	Decoder    Decoder
 	ShakeHands HandshakeFunc
+	OnPeer     func(p Peer) error
 }
 
 type TCPTransport struct {
 	TCPTransportOpts
 	listener net.Listener
 
-	mu    sync.RWMutex
-	peers map[net.Addr]Peer
+	rpcChan chan RPC
 }
 
 func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
 	return &TCPTransport{
 		TCPTransportOpts: opts,
+		rpcChan:          make(chan RPC),
 	}
+}
+
+// Consume implements the Transport interface, which will return a read-only
+// channel for reading the incoming messages received from another peer in the
+// network.
+func (t *TCPTransport) Consume() <-chan RPC {
+	return t.rpcChan
 }
 
 func (t *TCPTransport) ListenAndAccept() error {
@@ -70,6 +81,8 @@ func (t *TCPTransport) startAcceptLoop() {
 func (t *TCPTransport) handleConn(conn net.Conn) {
 	peer := NewTCPPeer(conn, true)
 
+	defer peer.Close()
+
 	err := t.ShakeHands(peer)
 	if err != nil {
 		fmt.Println("handleConn unexpected error ", err)
@@ -79,7 +92,15 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 	fmt.Println("Accepting new connection!", conn, peer)
 
-	msg := &Message{}
+	msg := RPC{}
+
+	if t.OnPeer != nil {
+		err = t.OnPeer(peer)
+		if err != nil {
+			fmt.Println("Failed to call OnPeer ", err)
+			return
+		}
+	}
 
 	// buf := make([]byte, 2000)
 
@@ -87,7 +108,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 	for {
 		// n, err := conn.Read(buf)
 
-		err := t.Decoder.Decode(conn, msg)
+		err := t.Decoder.Decode(conn, &msg)
 		if err != nil {
 			fmt.Println("handleConn unexpected error - read loop ", err)
 			continue
@@ -97,6 +118,8 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 		// fmt.Printf("Hello Message: %v\n", buf[:n])
 		fmt.Printf("Hello Message: %v\n", msg)
+
+		t.rpcChan <- msg
 	}
 
 }
