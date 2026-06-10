@@ -109,9 +109,14 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 		// n, err := conn.Read(buf)
 
 		err := t.Decoder.Decode(conn, &msg)
+		// if err == net.ErrClosed {
+		// 	fmt.Println("handleConn ErrClosed - read loop ", err)
+		// 	return
+		// }
 		if err != nil {
 			fmt.Println("handleConn unexpected error - read loop ", err)
-			continue
+			// continue
+			return
 		}
 
 		msg.From = conn.LocalAddr()
