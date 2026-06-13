@@ -23,6 +23,28 @@ func TestPathTransformFunc(t *testing.T) {
 	}
 }
 
+func TestStoreDeleteKey(t *testing.T) {
+	opts := StoreOpts{PathTransformFunc: CASPathTranformFunc}
+
+	s := NewStore(opts)
+
+	key := "some-test-key-2"
+
+	bytesData := []byte("Some Things IDK.")
+
+	data := bytes.NewReader(bytesData)
+
+	err := s.writeStream(key, data)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = s.Delete(key)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
 func TestStore(t *testing.T) {
 	opts := StoreOpts{PathTransformFunc: CASPathTranformFunc}
 
@@ -55,5 +77,10 @@ func TestStore(t *testing.T) {
 			bytesData,
 			b,
 		)
+	}
+
+	err = s.Delete(key)
+	if err != nil {
+		t.Error(err)
 	}
 }

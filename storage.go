@@ -18,6 +18,16 @@ type PathKey struct {
 	FileName string
 }
 
+func (pk PathKey) FirstPathName() (string, error) {
+	paths := strings.Split(pk.PathName, "/")
+
+	if len(paths) <= 0 {
+		return "", fmt.Errorf("Invalid PathName: %v", pk.PathName)
+	}
+
+	return paths[0], nil
+}
+
 func (pk PathKey) FullPath() string {
 	return fmt.Sprintf("%s/%s", pk.PathName, pk.FileName)
 }
@@ -61,6 +71,17 @@ func NewStore(opts StoreOpts) *Store {
 	return &Store{
 		StoreOpts: opts,
 	}
+}
+
+func (s *Store) Delete(key string) error {
+	pk := s.PathTransformFunc(key)
+
+	firstPathName, err := pk.FirstPathName()
+	if err != nil {
+		return err
+	}
+
+	return os.RemoveAll(firstPathName)
 }
 
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
