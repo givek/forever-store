@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+const defaultRootFolderName = "ggnetwork"
+
 type PathTransformFunc func(string) PathKey
 
 type PathKey struct {
@@ -62,16 +64,26 @@ var DefaultTranformFunc PathTransformFunc = func(key string) PathKey {
 }
 
 type StoreOpts struct {
+	// Root is the folder name of the dir, containing all the files and
+	// folders created by the store.
+	Root              string
 	PathTransformFunc PathTransformFunc
 }
 
 type Store struct{ StoreOpts }
 
 func NewStore(opts StoreOpts) *Store {
+	if opts.PathTransformFunc == nil {
+		opts.PathTransformFunc = DefaultTranformFunc
+	}
+	if len(strings.TrimSpace(opts.Root)) == 0 {
+		opts.Root = defaultRootFolderName
+	}
 	return &Store{
 		StoreOpts: opts,
 	}
 }
+func (s *Store) WithRoot(p string) string { return s.Root + "/" + p }
 
 func (s *Store) Delete(key string) error {
 	pk := s.PathTransformFunc(key)
@@ -81,12 +93,12 @@ func (s *Store) Delete(key string) error {
 		return err
 	}
 
-	return os.RemoveAll(firstPathName)
+	return os.RemoveAll(s.WithRoot(firstPathName))
 }
 
 func (s *Store) readStream(key string) (io.ReadCloser, error) {
 	pk := s.PathTransformFunc(key)
-	return os.Open(pk.FullPath())
+	return os.Open(s.WithRoot(pk.FullPath()))
 }
 
 func (s *Store) Read(key string) (io.Reader, error) {
@@ -109,9 +121,7 @@ func (s *Store) Read(key string) (io.Reader, error) {
 func (s *Store) writeStream(key string, r io.Reader) error {
 	pk := s.PathTransformFunc(key)
 
-	// TODO: Maybe add a storage folder and gitignore it.
-
-	err := os.MkdirAll(pk.PathName, os.ModePerm)
+	err := os.MkdirAll(s.WithRoot(pk.PathName), os.ModePerm)
 	if err != nil {
 		return err
 	}
@@ -125,7 +135,7 @@ func (s *Store) writeStream(key string, r io.Reader) error {
 	//
 	// pathWithFileName := pk.PathName + "/" + fileName
 
-	pathWithFileName := pk.FullPath()
+	pathWithFileName := s.WithRoot(pk.FullPath())
 	f, err := os.Create(pathWithFileName)
 	if err != nil {
 		return err
