@@ -11,9 +11,14 @@ import (
 	"strings"
 )
 
-type PathTransformFunc func(string) string
+type PathTransformFunc func(string) PathKey
 
-var CASPathTranformFunc PathTransformFunc = func(key string) string {
+type PathKey struct {
+	PathName string
+	Original string
+}
+
+var CASPathTranformFunc PathTransformFunc = func(key string) PathKey {
 	hash := sha1.Sum([]byte(key))
 	hashStr := hex.EncodeToString(hash[:])
 
@@ -29,11 +34,17 @@ var CASPathTranformFunc PathTransformFunc = func(key string) string {
 		paths[i] = hashStr[from:to]
 	}
 
-	return strings.Join(paths, "/")
+	return PathKey{
+		PathName: strings.Join(paths, "/"),
+		Original: hashStr,
+	}
 }
 
-var DefaultTranformFunc PathTransformFunc = func(key string) string {
-	return key
+var DefaultTranformFunc PathTransformFunc = func(key string) PathKey {
+	return PathKey{
+		PathName: key,
+		Original: key,
+	}
 }
 
 type StoreOpts struct {
@@ -49,11 +60,11 @@ func NewStore(opts StoreOpts) *Store {
 }
 
 func (s *Store) writeStream(key string, r io.Reader) error {
-	pathName := s.PathTransformFunc(key)
+	pk := s.PathTransformFunc(key)
 
 	// TODO: Maybe add a storage folder and gitignore it.
 
-	err := os.MkdirAll(pathName, os.ModePerm)
+	err := os.MkdirAll(pk.PathName, os.ModePerm)
 	if err != nil {
 		return err
 	}
@@ -65,7 +76,7 @@ func (s *Store) writeStream(key string, r io.Reader) error {
 	fileNameBytes := md5.Sum(buf.Bytes())
 	fileName := hex.EncodeToString(fileNameBytes[:])
 
-	pathWithFileName := pathName + "/" + fileName
+	pathWithFileName := pk.PathName + "/" + fileName
 
 	f, err := os.Create(pathWithFileName)
 	if err != nil {
