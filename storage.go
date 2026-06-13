@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -84,6 +85,17 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 func (s *Store) WithRoot(p string) string { return s.Root + "/" + p }
+
+func (s *Store) Has(key string) bool {
+	pk := s.PathTransformFunc(key)
+
+	_, err := os.Stat(s.WithRoot(pk.FullPath()))
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+
+	return true
+}
 
 func (s *Store) Delete(key string) error {
 	pk := s.PathTransformFunc(key)

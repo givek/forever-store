@@ -83,4 +83,10 @@ func TestStore(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+
+	if ok := s.Has(key); ok {
+		t.Errorf(
+			"Deleted file still exists.",
+		)
+	}
 }
