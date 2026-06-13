@@ -1,0 +1,1 @@
+- Make sure to output the data in a fixed root folder which we can then add in gitignore.

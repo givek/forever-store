@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
-	"crypto/md5"
 	"crypto/sha1"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -15,7 +15,11 @@ type PathTransformFunc func(string) PathKey
 
 type PathKey struct {
 	PathName string
-	Original string
+	FileName string
+}
+
+func (pk PathKey) FullPath() string {
+	return fmt.Sprintf("%s/%s", pk.PathName, pk.FileName)
 }
 
 var CASPathTranformFunc PathTransformFunc = func(key string) PathKey {
@@ -36,14 +40,14 @@ var CASPathTranformFunc PathTransformFunc = func(key string) PathKey {
 
 	return PathKey{
 		PathName: strings.Join(paths, "/"),
-		Original: hashStr,
+		FileName: hashStr,
 	}
 }
 
 var DefaultTranformFunc PathTransformFunc = func(key string) PathKey {
 	return PathKey{
 		PathName: key,
-		Original: key,
+		FileName: key,
 	}
 }
 
@@ -59,6 +63,28 @@ func NewStore(opts StoreOpts) *Store {
 	}
 }
 
+func (s *Store) readStream(key string) (io.ReadCloser, error) {
+	pk := s.PathTransformFunc(key)
+	return os.Open(pk.FullPath())
+}
+
+func (s *Store) Read(key string) (io.Reader, error) {
+	rc, err := s.readStream(key)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+
+	buf := new(bytes.Buffer)
+
+	_, err = io.Copy(buf, rc)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf, nil
+}
+
 func (s *Store) writeStream(key string, r io.Reader) error {
 	pk := s.PathTransformFunc(key)
 
@@ -69,21 +95,22 @@ func (s *Store) writeStream(key string, r io.Reader) error {
 		return err
 	}
 
-	// fileName := "some-filename"
-	buf := new(bytes.Buffer)
-	io.Copy(buf, r)
+	// // fileName := "some-filename"
+	// buf := new(bytes.Buffer)
+	// io.Copy(buf, r)
+	//
+	// fileNameBytes := md5.Sum(buf.Bytes())
+	// fileName := hex.EncodeToString(fileNameBytes[:])
+	//
+	// pathWithFileName := pk.PathName + "/" + fileName
 
-	fileNameBytes := md5.Sum(buf.Bytes())
-	fileName := hex.EncodeToString(fileNameBytes[:])
-
-	pathWithFileName := pk.PathName + "/" + fileName
-
+	pathWithFileName := pk.FullPath()
 	f, err := os.Create(pathWithFileName)
 	if err != nil {
 		return err
 	}
 
-	n, err := io.Copy(f, buf)
+	n, err := io.Copy(f, r)
 	if err != nil {
 		return err
 	}

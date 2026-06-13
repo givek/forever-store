@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"testing"
 )
 
@@ -27,10 +28,32 @@ func TestStore(t *testing.T) {
 
 	s := NewStore(opts)
 
-	data := bytes.NewReader([]byte("Some Things IDK."))
+	key := "some-test-key-1"
 
-	err := s.writeStream("some-test-key-1", data)
+	bytesData := []byte("Some Things IDK.")
+
+	data := bytes.NewReader(bytesData)
+
+	err := s.writeStream(key, data)
 	if err != nil {
 		t.Error(err)
+	}
+
+	r, err := s.Read(key)
+	if err != nil {
+		t.Error(err)
+	}
+
+	b, err := io.ReadAll(r)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if !bytes.Equal(bytesData, b) {
+		t.Errorf(
+			"Expected: %v :: Got: %v",
+			bytesData,
+			b,
+		)
 	}
 }
