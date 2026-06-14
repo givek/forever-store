@@ -23,10 +23,21 @@ func TestPathTransformFunc(t *testing.T) {
 	}
 }
 
-func TestStoreDeleteKey(t *testing.T) {
+func newStore() *Store {
 	opts := StoreOpts{PathTransformFunc: CASPathTranformFunc}
+	return NewStore(opts)
+}
 
-	s := NewStore(opts)
+func teardown(t *testing.T, s *Store) {
+	err := s.Clear()
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestStoreDeleteKey(t *testing.T) {
+	s := newStore()
+	defer teardown(t, s)
 
 	key := "some-test-key-2"
 
@@ -46,9 +57,8 @@ func TestStoreDeleteKey(t *testing.T) {
 }
 
 func TestStore(t *testing.T) {
-	opts := StoreOpts{PathTransformFunc: CASPathTranformFunc}
-
-	s := NewStore(opts)
+	s := newStore()
+	defer teardown(t, s)
 
 	key := "some-test-key-1"
 
