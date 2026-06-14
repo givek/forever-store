@@ -10,7 +10,6 @@ import (
 func TestPathTransformFunc(t *testing.T) {
 	key := "some-random-key"
 	pk := CASPathTranformFunc(key)
-	fmt.Println(pk.PathName)
 
 	expectedPathName := "b6d18/9bfbd/7dcc6/1ffcd/093ad/b37d4/60f81/f4216"
 
@@ -60,43 +59,45 @@ func TestStore(t *testing.T) {
 	s := newStore()
 	defer teardown(t, s)
 
-	key := "some-test-key-1"
+	for i := range 50 {
+		key := fmt.Sprintf("some-test-key-%v", i)
 
-	bytesData := []byte("Some Things IDK.")
+		bytesData := []byte("Some Things IDK." + " " + key)
 
-	data := bytes.NewReader(bytesData)
+		data := bytes.NewReader(bytesData)
 
-	err := s.writeStream(key, data)
-	if err != nil {
-		t.Error(err)
-	}
+		err := s.writeStream(key, data)
+		if err != nil {
+			t.Error(err)
+		}
 
-	r, err := s.Read(key)
-	if err != nil {
-		t.Error(err)
-	}
+		r, err := s.Read(key)
+		if err != nil {
+			t.Error(err)
+		}
 
-	b, err := io.ReadAll(r)
-	if err != nil {
-		t.Error(err)
-	}
+		b, err := io.ReadAll(r)
+		if err != nil {
+			t.Error(err)
+		}
 
-	if !bytes.Equal(bytesData, b) {
-		t.Errorf(
-			"Expected: %v :: Got: %v",
-			bytesData,
-			b,
-		)
-	}
+		if !bytes.Equal(bytesData, b) {
+			t.Errorf(
+				"Expected: %v :: Got: %v",
+				bytesData,
+				b,
+			)
+		}
 
-	err = s.Delete(key)
-	if err != nil {
-		t.Error(err)
-	}
+		err = s.Delete(key)
+		if err != nil {
+			t.Error(err)
+		}
 
-	if ok := s.Has(key); ok {
-		t.Errorf(
-			"Deleted file still exists.",
-		)
+		if ok := s.Has(key); ok {
+			t.Errorf(
+				"Deleted file still exists.",
+			)
+		}
 	}
 }
