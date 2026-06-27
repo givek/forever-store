@@ -18,6 +18,15 @@ func (p *TCPPeer) Close() error {
 	return p.conn.Close()
 }
 
+func (p *TCPPeer) RemoteAddr() net.Addr {
+	return p.conn.RemoteAddr()
+}
+
+func (p *TCPPeer) Send(b []byte) error {
+	_, err := p.conn.Write(b)
+	return err
+}
+
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
 		conn:     conn,
@@ -39,9 +48,9 @@ type TCPTransport struct {
 	rpcChan chan RPC
 }
 
-func NewTCPTransport(opts TCPTransportOpts) *TCPTransport {
+func NewTCPTransport(opts *TCPTransportOpts) *TCPTransport {
 	return &TCPTransport{
-		TCPTransportOpts: opts,
+		TCPTransportOpts: *opts,
 		rpcChan:          make(chan RPC),
 	}
 }
@@ -58,6 +67,7 @@ func (t *TCPTransport) Consume() <-chan RPC {
 }
 
 func (t *TCPTransport) ListenAndAccept() error {
+	fmt.Println("[ListenAndAccept] OnPeer ", t.OnPeer)
 	ln, err := net.Listen("tcp", t.ListenAddr)
 
 	if err != nil {
@@ -67,6 +77,17 @@ func (t *TCPTransport) ListenAndAccept() error {
 	t.listener = ln
 
 	go t.startAcceptLoop()
+
+	return nil
+}
+
+func (t *TCPTransport) Dial(addr string) error {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	go t.handleConn(conn, true)
 
 	return nil
 }
@@ -82,12 +103,12 @@ func (t *TCPTransport) startAcceptLoop() {
 			continue
 		}
 
-		go t.handleConn(conn)
+		go t.handleConn(conn, false)
 	}
 }
 
-func (t *TCPTransport) handleConn(conn net.Conn) {
-	peer := NewTCPPeer(conn, true)
+func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
+	peer := NewTCPPeer(conn, outbound)
 
 	defer peer.Close()
 
@@ -102,6 +123,7 @@ func (t *TCPTransport) handleConn(conn net.Conn) {
 
 	msg := RPC{}
 
+	fmt.Println("Hello OnPeer: ", t.OnPeer)
 	if t.OnPeer != nil {
 		err = t.OnPeer(peer)
 		if err != nil {
