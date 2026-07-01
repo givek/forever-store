@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/givek/forever-store/p2p"
 )
@@ -42,34 +43,74 @@ func NewFileServer(opts FileServerOpts) *FileServer {
 	}
 }
 
-type Payload struct {
-	Key  string
-	Data []byte
+type Message struct {
+	Payload any
 }
 
-func (s *FileServer) broadcast(p Payload) error {
-	buf := new(bytes.Buffer)
+func (s *FileServer) broadcast(p *Message) error {
+	peers := []io.Writer{}
 
 	for _, peer := range s.peers {
-		err := gob.NewEncoder(buf).Encode(p)
-		if err != nil {
-			return err
-		}
+		peers = append(peers, peer)
+	}
 
+	mw := io.MultiWriter(peers...)
+
+	return gob.NewEncoder(mw).Encode(p)
+}
+
+func (fs *FileServer) StoreData(key string, r io.Reader) error {
+
+	buf := new(bytes.Buffer)
+	msg := Message{
+		Payload: []byte("SomeKey"),
+	}
+
+	err := gob.NewEncoder(buf).Encode(msg)
+	if err != nil {
+		return err
+	}
+
+	for _, peer := range fs.peers {
 		err = peer.Send(buf.Bytes())
 		if err != nil {
 			return err
 		}
 	}
 
-	return nil
-}
+	time.Sleep(5 * time.Second)
 
-func (fs *FileServer) StoreData(key string, r io.Reader) error {
-	// 1. Store this file to disk.
-	// 2. Bordcast this file to all known peers in the network.
+	payload := []byte("Very big file!")
+	for _, peer := range fs.peers {
+		err = peer.Send(payload)
+		if err != nil {
+			return err
+		}
+	}
 
 	return nil
+
+	// // TODO: Check if we can do this with io.ReadSeeker
+	// // Also what is the diff between this tee vs reseting
+	// // the read pointer to 0 approach?
+	// buf := new(bytes.Buffer)
+	// tee := io.TeeReader(r, buf)
+	//
+	// // 1. Store this file to disk.
+	// err := fs.store.Write(key, tee)
+	// if err != nil {
+	// 	return err
+	// }
+	//
+	// // - Once the reader is read, at this point it will be empty
+	//
+	// // 2. Bordcast this file to all known peers in the network.
+	//
+	// p := Payload{Key: key, Data: buf.Bytes()}
+	//
+	// fs.broadcast(p)
+	//
+	// return nil
 }
 
 func (fs *FileServer) Stop() {
@@ -82,7 +123,7 @@ func (fs *FileServer) OnPeer(p p2p.Peer) error {
 
 	fs.peers[p.RemoteAddr().String()] = p
 
-	log.Println("Connected with remote peer", p.RemoteAddr())
+	log.Printf("[%v] LocalAddr: %v -> Peer added: %v\n", fs.StoreRoot, p.LocalAddr().String(), p.RemoteAddr().String())
 
 	return nil
 }
@@ -96,8 +137,32 @@ func (fs *FileServer) loop() {
 	for {
 		select {
 
-		case msg := <-fs.Transport.Consume():
-			fmt.Println(msg)
+		case rpc := <-fs.Transport.Consume():
+
+			msg := Message{}
+			err := gob.NewDecoder(bytes.NewReader(rpc.Payload)).Decode(&msg)
+			if err != nil {
+				log.Fatal("Failed to decode message: ", rpc)
+			}
+
+			peer, ok := fs.peers[rpc.From.String()]
+			if !ok {
+				fmt.Println("[FileServer - loop] Just before panic", fs.StoreRoot, fs.peers, rpc.From.String())
+				// TODO: Handle gracefully.
+				panic("peer not found in the peer list!")
+			}
+
+			fmt.Println(peer, string(msg.Payload.([]byte)))
+
+			buff := make([]byte, 1024)
+			n, err := peer.Read(buff)
+			if err != nil {
+				log.Fatal("Failed to read from peer: ", peer.LocalAddr(), err)
+			}
+
+			peer.(*p2p.TCPPeer).Wg.Done()
+
+			fmt.Printf("Received Msg with payload: %v - %v\n", string(msg.Payload.([]byte)), string(buff[:n]))
 
 		case <-fs.quitChan:
 			return
@@ -125,9 +190,7 @@ func (fs *FileServer) bootstrapNetwork() error {
 }
 
 func (fs *FileServer) Start() error {
-	fmt.Println("[Start] FileServer OnPeer", fs.OnPeer)
-	fs.Transport.
-		err := fs.Transport.ListenAndAccept()
+	err := fs.Transport.ListenAndAccept()
 	if err != nil {
 		return err
 	}

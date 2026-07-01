@@ -4,33 +4,37 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 )
 
 type TCPPeer struct {
-	conn net.Conn
+	net.Conn
 
 	// if we dial and retrieve a conn => outbound == true
 	// if we accept and retrieve a conn => outbound == false
 	outbound bool
+
+	Wg *sync.WaitGroup
 }
 
-func (p *TCPPeer) Close() error {
-	return p.conn.Close()
-}
-
-func (p *TCPPeer) RemoteAddr() net.Addr {
-	return p.conn.RemoteAddr()
-}
+// func (p *TCPPeer) Close() error {
+// 	return p.conn.Close()
+// }
+//
+// func (p *TCPPeer) RemoteAddr() net.Addr {
+// 	return p.conn.RemoteAddr()
+// }
 
 func (p *TCPPeer) Send(b []byte) error {
-	_, err := p.conn.Write(b)
+	_, err := p.Conn.Write(b)
 	return err
 }
 
 func NewTCPPeer(conn net.Conn, outbound bool) *TCPPeer {
 	return &TCPPeer{
-		conn:     conn,
+		Conn:     conn,
 		outbound: outbound,
+		Wg:       &sync.WaitGroup{},
 	}
 }
 
@@ -67,7 +71,6 @@ func (t *TCPTransport) Consume() <-chan RPC {
 }
 
 func (t *TCPTransport) ListenAndAccept() error {
-	fmt.Println("[ListenAndAccept] OnPeer ", t.OnPeer)
 	ln, err := net.Listen("tcp", t.ListenAddr)
 
 	if err != nil {
@@ -123,7 +126,6 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 
 	msg := RPC{}
 
-	fmt.Println("Hello OnPeer: ", t.OnPeer)
 	if t.OnPeer != nil {
 		err = t.OnPeer(peer)
 		if err != nil {
@@ -149,12 +151,17 @@ func (t *TCPTransport) handleConn(conn net.Conn, outbound bool) {
 			return
 		}
 
-		msg.From = conn.LocalAddr()
+		msg.From = conn.RemoteAddr()
+
+		peer.Wg.Add(1)
 
 		// fmt.Printf("Hello Message: %v\n", buf[:n])
-		fmt.Printf("Hello Message: %v\n", msg)
+		fmt.Printf("Sending Message - From: %v :: Payload: %v\n", msg.From.String(), msg.Payload)
 
 		t.rpcChan <- msg
+		fmt.Println("Waiting till stream done")
+		peer.Wg.Wait()
+		fmt.Println("Stream done, continuing normal read loop")
 	}
 
 }
