@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"sync"
-	"time"
 
 	"github.com/givek/forever-store/p2p"
 )
@@ -47,6 +46,8 @@ type Message struct {
 	Payload any
 }
 
+type MessageStoreFile struct{ Key string }
+
 func (s *FileServer) broadcast(p *Message) error {
 	peers := []io.Writer{}
 
@@ -63,7 +64,7 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 
 	buf := new(bytes.Buffer)
 	msg := Message{
-		Payload: []byte("SomeKey"),
+		Payload: MessageStoreFile{Key: key},
 	}
 
 	err := gob.NewEncoder(buf).Encode(msg)
@@ -78,15 +79,15 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 		}
 	}
 
-	time.Sleep(5 * time.Second)
-
-	payload := []byte("Very big file!")
-	for _, peer := range fs.peers {
-		err = peer.Send(payload)
-		if err != nil {
-			return err
-		}
-	}
+	// time.Sleep(5 * time.Second)
+	//
+	// payload := []byte("Very big file!")
+	// for _, peer := range fs.peers {
+	// 	err = peer.Send(payload)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
 
 	return nil
 
@@ -145,6 +146,8 @@ func (fs *FileServer) loop() {
 				log.Fatal("Failed to decode message: ", rpc)
 			}
 
+			fmt.Printf("%+v\n", msg.Payload)
+
 			peer, ok := fs.peers[rpc.From.String()]
 			if !ok {
 				fmt.Println("[FileServer - loop] Just before panic", fs.StoreRoot, fs.peers, rpc.From.String())
@@ -152,7 +155,7 @@ func (fs *FileServer) loop() {
 				panic("peer not found in the peer list!")
 			}
 
-			fmt.Println(peer, string(msg.Payload.([]byte)))
+			// fmt.Println(peer, string(msg.Payload.([]byte)))
 
 			buff := make([]byte, 1024)
 			n, err := peer.Read(buff)
@@ -160,9 +163,11 @@ func (fs *FileServer) loop() {
 				log.Fatal("Failed to read from peer: ", peer.LocalAddr(), err)
 			}
 
+			n += 1
+
 			peer.(*p2p.TCPPeer).Wg.Done()
 
-			fmt.Printf("Received Msg with payload: %v - %v\n", string(msg.Payload.([]byte)), string(buff[:n]))
+			// fmt.Printf("Received Msg with payload: %v - %v\n", string(msg.Payload.([]byte)), string(buff[:n]))
 
 		case <-fs.quitChan:
 			return
@@ -201,4 +206,8 @@ func (fs *FileServer) Start() error {
 	fs.loop()
 
 	return nil
+}
+
+func init() {
+	gob.Register(MessageStoreFile{})
 }
