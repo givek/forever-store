@@ -134,16 +134,16 @@ func (s *Store) Read(key string) (io.Reader, error) {
 	return buf, nil
 }
 
-func (s *Store) Write(key string, r io.Reader) error {
+func (s *Store) Write(key string, r io.Reader) (int64, error) {
 	return s.writeStream(key, r)
 }
 
-func (s *Store) writeStream(key string, r io.Reader) error {
+func (s *Store) writeStream(key string, r io.Reader) (int64, error) {
 	pk := s.PathTransformFunc(key)
 
 	err := os.MkdirAll(s.WithRoot(pk.PathName), os.ModePerm)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// // fileName := "some-filename"
@@ -158,12 +158,12 @@ func (s *Store) writeStream(key string, r io.Reader) error {
 	pathWithFileName := s.WithRoot(pk.FullPath())
 	f, err := os.Create(pathWithFileName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	n, err := io.Copy(f, r)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	log.Printf(
@@ -172,5 +172,5 @@ func (s *Store) writeStream(key string, r io.Reader) error {
 		pathWithFileName,
 	)
 
-	return nil
+	return n, nil
 }

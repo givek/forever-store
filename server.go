@@ -65,29 +65,31 @@ func (s *FileServer) broadcast(p *Message) error {
 }
 
 func (fs *FileServer) StoreData(key string, r io.Reader) error {
-	// // TODO: Check if we can do this with io.ReadSeeker
-	// // Also what is the diff between this tee vs reseting
-	// // the read pointer to 0 approach?
-	// buf := new(bytes.Buffer)
-	// tee := io.TeeReader(r, buf)
-	//
-	// // 1. Store this file to disk.
-	// err := fs.store.Write(key, tee)
-	// if err != nil {
-	// 	return err
-	// }
-	//
-	// // - Once the reader is read, at this point it will be empty
+	// TODO: Check if we can do this with io.ReadSeeker
+	// Also what is the diff between this tee vs reseting
+	// the read pointer to 0 approach?
+	fileBuffer := new(bytes.Buffer)
+	tee := io.TeeReader(r, fileBuffer)
 
-	buf := new(bytes.Buffer)
+	// 1. Store this file to disk.
+	n, err := fs.store.Write(key, tee)
+	if err != nil {
+		return err
+	}
+
+	// - Once the reader is read, at this point it will be empty
+
+	fmt.Println("I wrote some many bytes, but how many? ", n)
+
+	msgBuf := new(bytes.Buffer)
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  key,
-			Size: 26,
+			Size: n,
 		},
 	}
 
-	err := gob.NewEncoder(buf).Encode(msg)
+	err = gob.NewEncoder(msgBuf).Encode(msg)
 	if err != nil {
 		return err
 	}
@@ -99,12 +101,14 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 	// fs.broadcast(p)
 
 	for _, peer := range fs.peers {
-		err = peer.Send(buf.Bytes())
+		err = peer.Send(msgBuf.Bytes())
 		if err != nil {
 			return err
 		}
 	}
 
+	// The message were going too fast and close, the second message was
+	// getting dropped.
 	time.Sleep(3 * time.Second)
 
 	// payload := []byte("Very big file!")
@@ -114,7 +118,7 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 		// 	return err
 		// }
 
-		n, err := io.Copy(peer, r)
+		n, err := io.Copy(peer, fileBuffer)
 		if err != nil {
 			return err
 		}
@@ -150,7 +154,8 @@ func (fs *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) 
 		return fmt.Errorf("peer not found in the peer list!")
 	}
 
-	err := fs.store.Write(msg.Key, io.LimitReader(peer, msg.Size))
+	// TODO: Maybe we should return n?
+	_, err := fs.store.Write(msg.Key, io.LimitReader(peer, msg.Size))
 	if err != nil {
 		return err
 	}
