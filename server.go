@@ -52,16 +52,39 @@ type MessageStoreFile struct {
 	Size int64
 }
 
-func (s *FileServer) broadcast(p *Message) error {
+func (fs *FileServer) stream(p *Message) error {
 	peers := []io.Writer{}
 
-	for _, peer := range s.peers {
+	for _, peer := range fs.peers {
 		peers = append(peers, peer)
 	}
 
 	mw := io.MultiWriter(peers...)
 
 	return gob.NewEncoder(mw).Encode(p)
+}
+
+func (fs *FileServer) broadcast(msg *Message) error {
+	msgBuf := new(bytes.Buffer)
+	err := gob.NewEncoder(msgBuf).Encode(msg)
+	if err != nil {
+		return err
+	}
+
+	// // 2. Bordcast this file to all known peers in the network.
+	//
+	// p := Payload{Key: key, Data: buf.Bytes()}
+	//
+	// fs.broadcast(p)
+
+	for _, peer := range fs.peers {
+		err = peer.Send(msgBuf.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (fs *FileServer) StoreData(key string, r io.Reader) error {
@@ -81,7 +104,6 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 
 	fmt.Println("I wrote some many bytes, but how many? ", n)
 
-	msgBuf := new(bytes.Buffer)
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  key,
@@ -89,22 +111,9 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 		},
 	}
 
-	err = gob.NewEncoder(msgBuf).Encode(msg)
+	err = fs.broadcast(&msg)
 	if err != nil {
 		return err
-	}
-
-	// // 2. Bordcast this file to all known peers in the network.
-	//
-	// p := Payload{Key: key, Data: buf.Bytes()}
-	//
-	// fs.broadcast(p)
-
-	for _, peer := range fs.peers {
-		err = peer.Send(msgBuf.Bytes())
-		if err != nil {
-			return err
-		}
 	}
 
 	// The message were going too fast and close, the second message was

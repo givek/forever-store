@@ -44,7 +44,7 @@ func TestStoreDeleteKey(t *testing.T) {
 
 	data := bytes.NewReader(bytesData)
 
-	err := s.writeStream(key, data)
+	_, err := s.writeStream(key, data)
 	if err != nil {
 		t.Error(err)
 	}
@@ -66,7 +66,7 @@ func TestStore(t *testing.T) {
 
 		data := bytes.NewReader(bytesData)
 
-		err := s.writeStream(key, data)
+		_, err := s.writeStream(key, data)
 		if err != nil {
 			t.Error(err)
 		}

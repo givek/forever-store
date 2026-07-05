@@ -14,7 +14,7 @@ func TestTCPTransport(t *testing.T) {
 		ShakeHands: NOPHandshakeFunc,
 	}
 
-	tr := NewTCPTransport(opts)
+	tr := NewTCPTransport(&opts)
 
 	assert.Equal(t, tr.ListenAddr, listenAddr)
 	assert.Nil(t, tr.ListenAndAccept())
