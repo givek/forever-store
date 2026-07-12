@@ -52,6 +52,39 @@ type MessageStoreFile struct {
 	Size int64
 }
 
+type MessageGetFile struct {
+	Key string
+}
+
+func (fs *FileServer) Get(key string) (io.Reader, error) {
+	if fs.store.Has(key) {
+		return fs.store.Read(key)
+	}
+
+	fmt.Printf("Don't have any file associated with key: %v, locally. Trying to fetch from the network.\n", key)
+
+	msg := Message{
+		Payload: MessageGetFile{Key: key},
+	}
+
+	err := fs.broadcast(&msg)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, peer := range fs.peers {
+		fileBuffer := new(bytes.Buffer)
+		n, err := io.Copy(fileBuffer, peer)
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Println("Received bytes over the network: ", n, fileBuffer.String())
+	}
+
+	return nil, nil
+}
+
 func (fs *FileServer) stream(p *Message) error {
 	peers := []io.Writer{}
 
@@ -78,6 +111,8 @@ func (fs *FileServer) broadcast(msg *Message) error {
 	// fs.broadcast(p)
 
 	for _, peer := range fs.peers {
+		peer.Send([]byte{p2p.IncomingMessage})
+
 		err = peer.Send(msgBuf.Bytes())
 		if err != nil {
 			return err
@@ -87,7 +122,7 @@ func (fs *FileServer) broadcast(msg *Message) error {
 	return nil
 }
 
-func (fs *FileServer) StoreData(key string, r io.Reader) error {
+func (fs *FileServer) Store(key string, r io.Reader) error {
 	// TODO: Check if we can do this with io.ReadSeeker
 	// Also what is the diff between this tee vs reseting
 	// the read pointer to 0 approach?
@@ -118,7 +153,7 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 
 	// The message were going too fast and close, the second message was
 	// getting dropped.
-	time.Sleep(3 * time.Second)
+	time.Sleep(3 * time.Millisecond)
 
 	// payload := []byte("Very big file!")
 	for _, peer := range fs.peers {
@@ -126,6 +161,8 @@ func (fs *FileServer) StoreData(key string, r io.Reader) error {
 		// if err != nil {
 		// 	return err
 		// }
+
+		peer.Send([]byte{p2p.IncomingStream})
 
 		n, err := io.Copy(peer, fileBuffer)
 		if err != nil {
@@ -162,23 +199,59 @@ func (fs *FileServer) handleMessageStoreFile(from string, msg MessageStoreFile) 
 		fmt.Println("[handleMessageStoreFile] Just before error", fs.StoreRoot, fs.peers, from)
 		return fmt.Errorf("peer not found in the peer list!")
 	}
+	fmt.Println("HELLLO-DCKX")
 
 	// TODO: Maybe we should return n?
-	_, err := fs.store.Write(msg.Key, io.LimitReader(peer, msg.Size))
+	n, err := fs.store.Write(msg.Key, io.LimitReader(peer, msg.Size))
 	if err != nil {
 		return err
 	}
 
-	peer.(*p2p.TCPPeer).Wg.Done()
+	fmt.Println("HELLLO-XKCD")
+
+	fmt.Printf("[%v] Written %v bytes to disk\n", fs.Transport.Addr(), n)
+
+	// peer.(*p2p.TCPPeer).Wg.Done()
+	peer.CloseStream()
+
+	return nil
+}
+
+func (fs *FileServer) handleMessageGetFile(from string, msg MessageGetFile) error {
+	if !fs.store.Has(msg.Key) {
+		return fmt.Errorf("Could not find file for key: %v.", msg.Key)
+	}
+
+	fmt.Println("GETTING SOME FILES!")
+
+	r, err := fs.store.Read(msg.Key)
+	if err != nil {
+		return err
+	}
+
+	peer, ok := fs.peers[from]
+	if !ok {
+		return fmt.Errorf("Could not find from (%v) peer in the peer list.", from)
+	}
+
+	n, err := io.Copy(peer, r)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Wriiten %v bytes to %v\n", n, from)
 
 	return nil
 }
 
 func (fs *FileServer) handleMessage(from string, msg *Message) error {
+	fmt.Printf("received data: %+v\n", msg)
 	switch v := msg.Payload.(type) {
 	case MessageStoreFile:
-		fmt.Printf("received data: %+v\n", v)
 		return fs.handleMessageStoreFile(from, v)
+	case MessageGetFile:
+		return fs.handleMessageGetFile(from, v)
+
 	}
 
 	return nil
@@ -194,16 +267,17 @@ func (fs *FileServer) loop() {
 		select {
 
 		case rpc := <-fs.Transport.Consume():
-
 			msg := Message{}
 			err := gob.NewDecoder(bytes.NewReader(rpc.Payload)).Decode(&msg)
 			if err != nil {
-				log.Fatal("Failed to decode message: ", rpc)
+				log.Println("Failed to decode message: ", rpc)
 			}
+
+			fmt.Println("HELLO XYZ-PQRS")
 
 			err = fs.handleMessage(rpc.From.String(), &msg)
 			if err != nil {
-				log.Fatal("Failed to handle message: ", rpc)
+				log.Println("Failed to handle message: ", rpc)
 			}
 
 			// fmt.Printf("%+v\n", msg.Payload)
@@ -270,4 +344,5 @@ func (fs *FileServer) Start() error {
 
 func init() {
 	gob.Register(MessageStoreFile{})
+	gob.Register(MessageGetFile{})
 }

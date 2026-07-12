@@ -6,7 +6,7 @@ import "net"
 type Peer interface {
 	net.Conn
 	RemoteAddr() net.Addr
-	// Close() error
+	CloseStream() error
 	Send(b []byte) error
 }
 
@@ -14,6 +14,7 @@ type Peer interface {
 // between the nodes in the network. This can be of the
 // form (TCP, UDP, websockets, ...)
 type Transport interface {
+	Addr() string
 	Dial(string) error
 	ListenAndAccept() error
 	Consume() <-chan RPC

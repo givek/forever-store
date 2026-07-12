@@ -68,9 +68,13 @@ func main() {
 
 	time.Sleep(2 * time.Second)
 
-	data := bytes.NewReader([]byte("My big fat data file here!"))
+	for i := range 10 {
+		data := bytes.NewReader([]byte(fmt.Sprintf("My big fat data file here! - %v", i)))
 
-	fs2.StoreData("some-key-june-28", data)
+		fs2.Store(fmt.Sprintf("some-key-june-28-%v", i), data)
+
+		time.Sleep(5 * time.Millisecond)
+	}
 
 	select {}
 
