@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 )
 
 type FileServerOpts struct {
+	EncKey            []byte
 	StoreRoot         string
 	PathTransformFunc PathTransformFunc
 	Transport         p2p.Transport
@@ -58,7 +60,8 @@ type MessageGetFile struct {
 
 func (fs *FileServer) Get(key string) (io.Reader, error) {
 	if fs.store.Has(key) {
-		return fs.store.Read(key)
+		_, r, err := fs.store.Read(key)
+		return r, err
 	}
 
 	fmt.Printf("Don't have any file associated with key: %v, locally. Trying to fetch from the network.\n", key)
@@ -72,17 +75,31 @@ func (fs *FileServer) Get(key string) (io.Reader, error) {
 		return nil, err
 	}
 
+	time.Sleep(500 * time.Millisecond)
+
 	for _, peer := range fs.peers {
-		fileBuffer := new(bytes.Buffer)
-		n, err := io.Copy(fileBuffer, peer)
+
+		var fileSize int64
+		binary.Read(peer, binary.LittleEndian, &fileSize)
+
+		n, err := fs.store.Write(key, io.LimitReader(peer, fileSize))
 		if err != nil {
 			return nil, err
 		}
 
-		fmt.Println("Received bytes over the network: ", n, fileBuffer.String())
+		// fileBuffer := new(bytes.Buffer)
+		// n, err := io.Copy(fileBuffer, peer)
+		// if err != nil {
+		// 	return nil, err
+		// }
+
+		fmt.Println("Received bytes over the network: ", n)
+
+		peer.CloseStream()
 	}
 
-	return nil, nil
+	_, r, err := fs.store.Read(key)
+	return r, err
 }
 
 func (fs *FileServer) stream(p *Message) error {
@@ -122,6 +139,10 @@ func (fs *FileServer) broadcast(msg *Message) error {
 	return nil
 }
 
+func (fs *FileServer) Remove(key string) error {
+	return nil
+}
+
 func (fs *FileServer) Store(key string, r io.Reader) error {
 	// TODO: Check if we can do this with io.ReadSeeker
 	// Also what is the diff between this tee vs reseting
@@ -142,7 +163,7 @@ func (fs *FileServer) Store(key string, r io.Reader) error {
 	msg := Message{
 		Payload: MessageStoreFile{
 			Key:  key,
-			Size: n,
+			Size: n + 16,
 		},
 	}
 
@@ -164,7 +185,8 @@ func (fs *FileServer) Store(key string, r io.Reader) error {
 
 		peer.Send([]byte{p2p.IncomingStream})
 
-		n, err := io.Copy(peer, fileBuffer)
+		n, err := copyEncrypt(fs.EncKey, fileBuffer, peer)
+		// n, err := io.Copy(peer, fileBuffer)
 		if err != nil {
 			return err
 		}
@@ -224,15 +246,24 @@ func (fs *FileServer) handleMessageGetFile(from string, msg MessageGetFile) erro
 
 	fmt.Println("GETTING SOME FILES!")
 
-	r, err := fs.store.Read(msg.Key)
+	fileSize, r, err := fs.store.Read(msg.Key)
 	if err != nil {
 		return err
+	}
+
+	rc, ok := r.(io.ReadCloser)
+	if ok {
+		defer rc.Close()
 	}
 
 	peer, ok := fs.peers[from]
 	if !ok {
 		return fmt.Errorf("Could not find from (%v) peer in the peer list.", from)
 	}
+
+	peer.Send([]byte{p2p.IncomingStream})
+
+	binary.Write(peer, binary.LittleEndian, fileSize)
 
 	n, err := io.Copy(peer, r)
 	if err != nil {

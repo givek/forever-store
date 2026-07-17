@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"errors"
@@ -112,26 +111,38 @@ func (s *Store) Delete(key string) error {
 	return os.RemoveAll(s.WithRoot(firstPathName))
 }
 
-func (s *Store) readStream(key string) (io.ReadCloser, error) {
+func (s *Store) readStream(key string) (int64, io.ReadCloser, error) {
 	pk := s.PathTransformFunc(key)
-	return os.Open(s.WithRoot(pk.FullPath()))
+
+	f, err := os.Open(s.WithRoot(pk.FullPath()))
+	if err != nil {
+		return 0, nil, err
+	}
+
+	fs, err := f.Stat()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return fs.Size(), f, nil
 }
 
-func (s *Store) Read(key string) (io.Reader, error) {
-	rc, err := s.readStream(key)
-	if err != nil {
-		return nil, err
-	}
-	defer rc.Close()
-
-	buf := new(bytes.Buffer)
-
-	_, err = io.Copy(buf, rc)
-	if err != nil {
-		return nil, err
-	}
-
-	return buf, nil
+func (s *Store) Read(key string) (int64, io.Reader, error) {
+	return s.readStream(key)
+	// n, rc, err := s.readStream(key)
+	// if err != nil {
+	// 	return 0, nil, err
+	// }
+	// defer rc.Close()
+	//
+	// buf := new(bytes.Buffer)
+	//
+	// _, err = io.Copy(buf, rc)
+	// if err != nil {
+	// 	return 0, nil, err
+	// }
+	//
+	// return n, buf, nil
 }
 
 func (s *Store) Write(key string, r io.Reader) (int64, error) {

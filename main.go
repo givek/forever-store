@@ -29,6 +29,7 @@ func makeServer(listenAddr string, nodes ...string) *FileServer {
 	transport := p2p.NewTCPTransport(tcpOpts)
 
 	fsOpts := FileServerOpts{
+		EncKey:            newEncryptionKey(),
 		StoreRoot:         fmt.Sprintf("%v-network", port),
 		PathTransformFunc: CASPathTranformFunc,
 		Transport:         transport,
